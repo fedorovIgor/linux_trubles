@@ -124,5 +124,18 @@ EOF
 chmod +x /etc/NetworkManager/dispatcher.d/99-fix-vpn-route
 echo "[4/4] NM-хук создан и стал исполняемым"
 
+# 5. Systemd-хук на выход из сна
+cat > /usr/lib/systemd/system-sleep/fix-vpn-route <<'EOF'
+#!/bin/bash
+case "$1" in
+  post)
+    /usr/local/bin/fix-vpn-route.sh
+    ;;
+esac
+EOF
+
+chmod +x /usr/lib/systemd/system-sleep/fix-vpn-route
+echo "[5/5] Systemd-хук на выход из сна установлен"
+
 echo "=== Установка завершена! ==="
 echo "Проверьте логи: journalctl -u fix-vpn-route.service"
