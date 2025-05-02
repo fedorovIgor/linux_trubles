@@ -11,12 +11,12 @@ echo "=== Установка проекта fix-vpn-route ==="
 
 # 1. Конфиг /etc/default/fix-vpn-route
 cat > /etc/default/fix-vpn-route <<'EOF'
-# Если YES — скрипт сам найдёт активный интернет-интерфейс (eth0, wlan0, usb…)
+# Если YES — скрипт сам найдёт интернет-интерфейс (eth0, wlan0, usb…)
 AUTO_DETECT_INTERFACE="yes"
-# VPN_SERVER_IP="auto" — автоматически забирается из текущей таблицы маршрутов
+# VPN_SERVER_IP="auto" — берётся из текущей таблицы маршрутов
 VPN_SERVER_IP="auto"
 EOF
-echo "[1/4] Конфиг /etc/default/fix-vpn-route создан"
+echo "[1/5] Конфиг /etc/default/fix-vpn-route создан"
 
 # 2. Скрипт /usr/local/bin/fix-vpn-route.sh
 cat > /usr/local/bin/fix-vpn-route.sh <<'EOF'
@@ -31,7 +31,7 @@ logger "[fix-vpn-route] started"
 if [[ "$AUTO_DETECT_INTERFACE" == "yes" ]]; then
   INTERNET_IF=$(ip route | awk '/^default/ {print $5; exit}')
 else
-  logger "[fix-vpn-route] ERROR: AUTO_DETECT_INTERFACE != yes, нужно задать интерфейс"
+  logger "[fix-vpn-route] ERROR: AUTO_DETECT_INTERFACE != yes"
   exit 1
 fi
 
@@ -45,14 +45,14 @@ fi
 VPN_IF=$(ip route | awk -v IF="$INTERNET_IF" \
   '/^default/ && $0 !~ IF {for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
 if [[ -z "$VPN_IF" ]]; then
-  logger "[fix-vpn-route] INFO: VPN interface not found — exiting."
+  logger "[fix-vpn-route] INFO: VPN interface not found — exit."
   exit 0
 fi
 
 VPN_GW=$(ip route | awk -v IF="$VPN_IF" \
   '/^default/ && $0 ~ IF {for(i=1;i<=NF;i++) if($i=="via"){print $(i+1); exit}}')
 if [[ -z "$VPN_GW" ]]; then
-  logger "[fix-vpn-route] WARN: VPN gateway not found for $VPN_IF — exiting."
+  logger "[fix-vpn-route] WARN: VPN gateway not found — exit."
   exit 0
 fi
 
@@ -61,7 +61,7 @@ logger "[fix-vpn-route] internet: $INTERNET_IF → $INTERNET_GW; vpn: $VPN_IF �
 if [[ "$VPN_SERVER_IP" == "auto" ]]; then
   VPN_SERVER_IP=$(ip route show dev "$INTERNET_IF" | awk '/ via / {print $1; exit}')
   if [[ -z "$VPN_SERVER_IP" ]]; then
-    logger "[fix-vpn-route] WARN: Не удалось определить VPN_SERVER_IP — exiting."
+    logger "[fix-vpn-route] WARN: Не удалось определить VPN_SERVER_IP — exit."
     exit 0
   fi
   logger "[fix-vpn-route] auto-detected VPN_SERVER_IP: $VPN_SERVER_IP"
@@ -86,14 +86,15 @@ logger "[fix-vpn-route] done"
 EOF
 
 chmod +x /usr/local/bin/fix-vpn-route.sh
-echo "[2/4] Скрипт /usr/local/bin/fix-vpn-route.sh создан и стал исполняемым"
+echo "[2/5] Скрипт создан и стал исполняемым"
 
 # 3. Systemd-сервис
 cat > /etc/systemd/system/fix-vpn-route.service <<'EOF'
 [Unit]
 Description=Fix VPN Routing Table
-After=network-online.target
-Wants=network-online.target
+Wants=network-online.target NetworkManager-wait-online.service
+After=network-online.target NetworkManager-wait-online.service
+Requires=NetworkManager-wait-online.service
 
 [Service]
 Type=oneshot
@@ -105,11 +106,10 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reexec
 systemctl daemon-reload
 systemctl enable fix-vpn-route.service
 systemctl restart fix-vpn-route.service
-echo "[3/4] Systemd-сервис создан, включён и запущен"
+echo "[3/5] Systemd-сервис создан, включён и запущен"
 
 # 4. NetworkManager-хук
 mkdir -p /etc/NetworkManager/dispatcher.d
@@ -122,7 +122,7 @@ if [[ "$STATUS" == "up" || "$STATUS" == "vpn-up" ]]; then
 fi
 EOF
 chmod +x /etc/NetworkManager/dispatcher.d/99-fix-vpn-route
-echo "[4/4] NM-хук создан и стал исполняемым"
+echo "[4/5] NM-хук создан и стал исполняемым"
 
 # 5. Systemd-хук на выход из сна
 cat > /usr/lib/systemd/system-sleep/fix-vpn-route <<'EOF'
@@ -133,7 +133,6 @@ case "$1" in
     ;;
 esac
 EOF
-
 chmod +x /usr/lib/systemd/system-sleep/fix-vpn-route
 echo "[5/5] Systemd-хук на выход из сна установлен"
 
